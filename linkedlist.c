@@ -3,13 +3,6 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-//typedef struct{
-//    int age;
-//    char name[50];
-
-//}Kocka;
-
-
 typedef struct Node{
     int value;
     struct Node *next;
