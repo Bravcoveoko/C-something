@@ -14,8 +14,8 @@
 #define OSC_TYPETAG(...) {',', __VA_ARGS__, '\0'}
 
 struct osc_timetag {
-  uint32_t sec;
-  uint32_t frac;
+  int32_t sec;
+  int32_t frac;
 };
 
 struct osc_message {
@@ -26,7 +26,7 @@ struct osc_message {
 
 union osc_msg_argument {
   const char *s;
-  const uint32_t i;
+  const int32_t i;
   const float f;
   const struct osc_timetag t;
 };
@@ -108,6 +108,45 @@ int osc_message_set_address(struct osc_message *msg, const char *address) {
   }
 
   return 0;
+
+}
+
+char *checkTypetagMemory(char *msgTypetag, char tag) {
+  size_t typetagLen = strlen(msgTypetag);
+  // 'Crititcal' situation multiple '\0' has to be added
+  char *newTypeTag = NULL;
+  if ((typetagLen % 4) == 3) {
+    newTypeTag = calloc(typetagLen + 5, sizeof(char));
+    if (!newTypeTag) {
+      return NULL;
+    }
+    memcpy(newTypeTag, msgTypetag, typetagLen);
+    *(newTypeTag + typetagLen) = tag;
+    return newTypeTag;
+  }
+
+  memcpy(newTypeTag, msgTypetag, typetagLen);
+  *(newTypeTag + typetagLen) = tag;
+
+  return newTypeTag;
+
+
+}
+
+int osc_message_add_int32(struct osc_message *msg, int32_t data) {
+  size_t msgLen = msg->typetag - msg->address;
+  size_t typeTagLen = getLength(msg->typetag);
+
+  /*void *pData = realloc(msg->raw_data, (msgLen + typeTagLen + 8));
+
+  if (!pData) {
+    return 1;
+  }
+
+  int *pRawData = pData;
+  *pRawData = msgLen + typeTagLen + 4;*/
+
+
 
 }
 
