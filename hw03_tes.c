@@ -86,8 +86,10 @@ int osc_message_set_address(struct osc_message *msg, const char *address) {
   size_t typetagLen = getLength(msg->typetag);
 
   if (msgLen != adrLen) {
+    void *oldPtr = msg->raw_data;
     void *pData = realloc(msg->raw_data, (adrLen + typetagLen + 4));
     if (!pData) {
+      msg->raw_data = oldPtr;
       return 1;
     }
 
@@ -111,42 +113,56 @@ int osc_message_set_address(struct osc_message *msg, const char *address) {
 
 }
 
-char *checkTypetagMemory(char *msgTypetag, char tag) {
+char *addNewTypeTag(char *msgTypetag, char tag) {
   size_t typetagLen = strlen(msgTypetag);
-  // 'Crititcal' situation multiple '\0' has to be added
-  char *newTypeTag = NULL;
-  if ((typetagLen % 4) == 3) {
-    newTypeTag = calloc(typetagLen + 5, sizeof(char));
-    if (!newTypeTag) {
-      return NULL;
-    }
-    memcpy(newTypeTag, msgTypetag, typetagLen);
-    *(newTypeTag + typetagLen) = tag;
-    return newTypeTag;
+  char *newTypeTag = ((typetagLen % 4) == 3) ? 
+                      calloc(typetagLen + 5, sizeof(char)) : 
+                      calloc(getLength(msgTypetag), sizeof(char));
+
+  if (!newTypeTag) {
+    return NULL;
   }
 
   memcpy(newTypeTag, msgTypetag, typetagLen);
   *(newTypeTag + typetagLen) = tag;
-
   return newTypeTag;
-
-
 }
 
 int osc_message_add_int32(struct osc_message *msg, int32_t data) {
-  size_t msgLen = msg->typetag - msg->address;
-  size_t typeTagLen = getLength(msg->typetag);
+  size_t adrLen = getLength(msg->address);
+  // TOTO FREE
+  void *oldPtr = msg->raw_data;
+  char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_INT);
 
-  /*void *pData = realloc(msg->raw_data, (msgLen + typeTagLen + 8));
+  if (!newTypeTag) {
+    msg->raw_data = oldPtr;
+    return 1;
+  }
+  size_t newTtagLen = getLength(newTypeTag);
+  void *pData = realloc(msg->raw_data, (newTtagLen + adrLen + 8));
 
   if (!pData) {
+    msg->raw_data = oldPtr;
     return 1;
   }
 
+  char *pAddress = pData + 4;
+  msg->address = pAddress;
+
+  char *pTypeTag = pData + 4 + adrLen;
+  memcpy(pTypeTag, newTypeTag, newTtagLen);
+  msg->typetag = pTypeTag;
+
+  int32_t *addDataPointer = pData + 4 + adrLen + newTtagLen;
+  *addDataPointer = data;
+  
   int *pRawData = pData;
-  *pRawData = msgLen + typeTagLen + 4;*/
+  *pRawData = (newTtagLen + adrLen + 4);
+  msg->raw_data = pRawData;
+  // Tu sa vykonava free.
+  free(newTypeTag);
 
-
+  return 0;
 
 }
 
