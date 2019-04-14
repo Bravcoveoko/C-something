@@ -95,12 +95,9 @@ int osc_message_set_address(struct osc_message *msg, const char *address) {
   size_t ttDataLen = msgLen - msgAdrLen;
   // Velkost hlavicky
   int newDataLength = addressLen + ttDataLen;
-  // Pre pripad ze reallokacia zlyha
-  void *oldPtr = msg->raw_data;
   // Realokacia
   void *pData = realloc(msg->raw_data, (addressLen + ttDataLen + sizeof(int)));
   if (!pData) {
-    msg->raw_data = oldPtr;
     return 1;
   }
   // Zmenim pointer na novu adresu 
@@ -144,8 +141,6 @@ int osc_message_add_int32(struct osc_message *msg, int32_t data) {
   size_t msgAdrLen = getLength(msg->address);
   // Velkost tt v msg
   size_t msgTtLen = getLength(msg->typetag);
-  // pointer pre pripad zlyhania reallocu
-  void *oldPtr = msg->raw_data;
   // pointer na data ktore sa nachadzaju za typetagom
   char *restData = msg->raw_data + msgAdrLen + msgTtLen + sizeof(int);
   // Velkost zvysnych dat
@@ -154,7 +149,6 @@ int osc_message_add_int32(struct osc_message *msg, int32_t data) {
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_INT);
 
   if (!newTypeTag) {
-    msg->raw_data = oldPtr;
     return 1;
   }
 
@@ -166,7 +160,6 @@ int osc_message_add_int32(struct osc_message *msg, int32_t data) {
   void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
-    msg->raw_data = oldPtr;
     return 1;
   }
   // Stare data
@@ -207,7 +200,6 @@ int osc_message_add_float(struct osc_message *msg, float data) {
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_FLOAT);
 
   if (!newTypeTag) {
-    msg->raw_data = oldPtr;
     return 1;
   }
 
@@ -219,7 +211,6 @@ int osc_message_add_float(struct osc_message *msg, float data) {
   void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
-    msg->raw_data = oldPtr;
     return 1;
   }
   // Stare data
@@ -260,7 +251,6 @@ int osc_message_add_timetag(struct osc_message *msg, struct osc_timetag tag) {
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_TIMETAG);
 
   if (!newTypeTag) {
-    msg->raw_data = oldPtr;
     return 1;
   }
 
@@ -272,7 +262,6 @@ int osc_message_add_timetag(struct osc_message *msg, struct osc_timetag tag) {
   void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
-    msg->raw_data = oldPtr;
     return 1;
   }
   // Stare data
@@ -280,7 +269,7 @@ int osc_message_add_timetag(struct osc_message *msg, struct osc_timetag tag) {
   memcpy(pRestData, restData, restDataLen);
   // Nove data
   struct osc_timetag *pNewData = pData + sizeof(int) + msgAdrLen + newTtagLen + restDataLen;
-  *pNewData = data;
+  *pNewData = tag;
   // Prve 4B (aktualizovana dlzka)
   int *pRawData = pData;
   *pRawData = newMsgLen;
@@ -313,7 +302,6 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_STRING);
 
   if (!newTypeTag) {
-    msg->raw_data = oldPtr;
     return 1;
   }
 
@@ -325,7 +313,6 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
-    msg->raw_data = oldPtr;
     return 1;
   }
   // Stare data
@@ -333,7 +320,7 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   memcpy(pRestData, restData, restDataLen);
   // Nove data
   char *pNewData = pData + sizeof(int) + msgAdrLen + newTtagLen + restDataLen;
-  *pNewData = data;
+  memcpy(pNewData, data, strlen(data) + 1);
   // Prve 4B (aktualizovana dlzka)
   int *pRawData = pData;
   *pRawData = newMsgLen;
@@ -350,6 +337,19 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   free(newTypeTag);
   return 0;
 }
+
+size_t osc_message_argc(const struct osc_message *msg) {
+  return strlen(msg->typetag) - 1;
+}
+
+const union osc_msg_argument *osc_message_arg(const struct osc_message *msg, size_t arg_index) {
+  
+}
+
+size_t osc_message_serialized_length(const struct osc_message *msg) {
+  return *(int*)msg->raw_data;
+}
+
 
 int main(void) {
   return 0;
