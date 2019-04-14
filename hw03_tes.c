@@ -273,7 +273,7 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   memcpy(addDataPointer, data, strlen(data) + 1);
   
   int *pRawData = pData;
-  *pRawData = (newTtagLen + adrLen + 4);
+  *pRawData = (newTtagLen + adrLen + strlen(data) + 1);
   msg->raw_data = pRawData;
 
   // Tu sa vykonava free.
