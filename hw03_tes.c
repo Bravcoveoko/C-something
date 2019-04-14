@@ -79,42 +79,53 @@ size_t getLength(const char *address) {
   size_t rest = len % 4;
   return len + (4 - rest);
 }
-
+// TOTO BY UZ MALO BYT DOBRE
 int osc_message_set_address(struct osc_message *msg, const char *address) {
-  size_t msgLen = msg->typetag - msg->address;
-  size_t adrLen = getLength(address);
-  size_t typetagLen = getLength(msg->typetag);
-
-  if (msgLen != adrLen) {
-    void *oldPtr = msg->raw_data;
-    void *pData = realloc(msg->raw_data, (adrLen + typetagLen + 4));
-    if (!pData) {
-      msg->raw_data = oldPtr;
-      return 1;
-    }
-
-    char *newAddress = pData + 4;
-    memcpy(newAddress, address, adrLen);
-    msg->address = newAddress;
-
-    char *newTypeTag = pData + (4 + adrLen);
-    memcpy(newTypeTag, msg->typetag, typetagLen);
-    msg->typetag = newTypeTag;
-
-    int *newPLength = pData;
-    *newPLength = (adrLen + typetagLen);
-    msg->raw_data = newPLength;
-
-  } else {
-    memcpy(msg->address, address, adrLen);
+  //Velkost msg->address
+  size_t msgAdrLen = getLength(msg->address);
+  // velkost zadanej adresy
+  size_t addressLen = getLength(address);
+  if (msgAdrLen == addressLen) {
+    memcpy(msg->address, address, addressLen);
+    return 0;
   }
+  // velkost raw data (celej spravy bez prvych 4B);
+  int msgLen = *(int*)msg->raw_data;
+  // Velkost typetagu + zvysnych dat
+  size_t ttDataLen = msgLen - msgAdrLen;
+  // Velkost hlavicky
+  int newDataLength = addressLen + ttDataLen;
+  // Pre pripad ze reallokacia zlyha
+  void *oldPtr = msg->raw_data;
+  // Realokacia
+  void *pData = realloc(msg->raw_data, (addressLen + ttDataLen + sizeof(int)));
+  if (!pData) {
+    msg->raw_data = oldPtr;
+    return 1;
+  }
+  // Zmenim pointer na novu adresu 
+  char *newAddress = pData + (4*sizeof(char));
+  memcpy(newAddress, address, addressLen);
+  msg->address = newAddress;
+  // Zmenit pointer na novy typetag spolu s datami
+  char *newTypeTagData = pData + sizeof(char)*(sizeof(int) + addressLen);
+  memcpy(newTypeTagData, msg->typetag, ttDataLen);
+  msg->typetag = newTypeTagData;
+  // Zmenim velkost
+  int *PoiNewDataLength = pData;
+  *PoiNewDataLength = newDataLength;
+  msg->raw_data = PoiNewDataLength;
 
   return 0;
-
 }
 
+// Vrati pointer na novu naalokovanu pamat ktora obsahuje
+// povodny string z typetagu + tag
 char *addNewTypeTag(char *msgTypetag, char tag) {
   size_t typetagLen = strlen(msgTypetag);
+  // Kriticka situacia. Pri ',if\0' sa prida novy typetag
+  // a musia sa podoplnat \0 nakonci inac len pridat novy tt.
+  // Calloc zarucuje \0
   char *newTypeTag = ((typetagLen % 4) == 3) ? 
                       calloc(typetagLen + 5, sizeof(char)) : 
                       calloc(getLength(msgTypetag), sizeof(char));
@@ -129,156 +140,214 @@ char *addNewTypeTag(char *msgTypetag, char tag) {
 }
 
 int osc_message_add_int32(struct osc_message *msg, int32_t data) {
-  size_t adrLen = getLength(msg->address);
-  // TOTO FREE
+  // Velkost adresy v msg
+  size_t msgAdrLen = getLength(msg->address);
+  // Velkost tt v msg
+  size_t msgTtLen = getLength(msg->typetag);
+  // pointer pre pripad zlyhania reallocu
   void *oldPtr = msg->raw_data;
+  // pointer na data ktore sa nachadzaju za typetagom
+  char *restData = msg->raw_data + msgAdrLen + msgTtLen + sizeof(int);
+  // Velkost zvysnych dat
+  int restDataLen = *(int*)msg->raw_data - msgAdrLen - msgTtLen; 
+  // Toto sa bude muset uvolnit
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_INT);
 
   if (!newTypeTag) {
     msg->raw_data = oldPtr;
     return 1;
   }
+
+  // velkost noveho typetagu
   size_t newTtagLen = getLength(newTypeTag);
-  void *pData = realloc(msg->raw_data, (newTtagLen + adrLen + sizeof(int) + sizeof(int32_t)));
+  // Nova dlzka ulozena na prvych 4B
+  int newMsgLen = msgAdrLen + newTtagLen + restDataLen + sizeof(int32_t);
+  // prve 4B + dlzka adresy + dlzka typetagu(noveho) + dlzka starych dat + dlzka noveho data ,kt. sa prida
+  void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
     msg->raw_data = oldPtr;
     return 1;
   }
-
-  char *pAddress = pData + 4;
-  msg->address = pAddress;
-
-  char *pTypeTag = pData + 4 + adrLen;
-  memcpy(pTypeTag, newTypeTag, newTtagLen);
-  msg->typetag = pTypeTag;
-
-  int32_t *addDataPointer = pData + 4 + adrLen + newTtagLen;
-  *addDataPointer = data;
-  
+  // Stare data
+  char *pRestData = pData + sizeof(int) + msgAdrLen + newTtagLen;
+  memcpy(pRestData, restData, restDataLen);
+  // Nove data
+  int32_t *pNewData = pData + sizeof(int) + msgAdrLen + newTtagLen + restDataLen;
+  *pNewData = data;
+  // Prve 4B (aktualizovana dlzka)
   int *pRawData = pData;
-  *pRawData = (newTtagLen + adrLen + sizeof(data));
+  *pRawData = newMsgLen;
   msg->raw_data = pRawData;
-
-  // Tu sa vykonava free.
+  // Adresa
+  char *pAddress = pData + sizeof(int);
+  memcpy(pAddress, msg->address, msgAdrLen);
+  msg->address = pAddress;
+  // TypeTag
+  char *pTypetag = pData + sizeof(int) + msgAdrLen;
+  memcpy(pTypetag, newTypeTag, newTtagLen);
+  msg->typetag = pTypetag;
+  // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag
   free(newTypeTag);
-
   return 0;
-
 }
 
 int osc_message_add_float(struct osc_message *msg, float data) {
-  size_t adrLen = getLength(msg->address);
-  // TOTO FREE
+  // Velkost adresy v msg
+  size_t msgAdrLen = getLength(msg->address);
+  // Velkost tt v msg
+  size_t msgTtLen = getLength(msg->typetag);
+  // pointer pre pripad zlyhania reallocu
   void *oldPtr = msg->raw_data;
+  // pointer na data ktore sa nachadzaju za typetagom
+  char *restData = msg->raw_data + msgAdrLen + msgTtLen + sizeof(int);
+  // Velkost zvysnych dat
+  int restDataLen = *(int*)msg->raw_data - msgAdrLen - msgTtLen; 
+  // Toto sa bude muset uvolnit
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_FLOAT);
 
   if (!newTypeTag) {
     msg->raw_data = oldPtr;
     return 1;
   }
+
+  // velkost noveho typetagu
   size_t newTtagLen = getLength(newTypeTag);
-  void *pData = realloc(msg->raw_data, (newTtagLen + adrLen + 8));
+  // Nova dlzka ulozena na prvych 4B
+  int newMsgLen = msgAdrLen + newTtagLen + restDataLen + sizeof(float);
+  // prve 4B + dlzka adresy + dlzka typetagu(noveho) + dlzka starych dat + dlzka noveho data ,kt. sa prida
+  void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
     msg->raw_data = oldPtr;
     return 1;
   }
-
-  char *pAddress = pData + 4;
-  msg->address = pAddress;
-
-  char *pTypeTag = pData + 4 + adrLen;
-  memcpy(pTypeTag, newTypeTag, newTtagLen);
-  msg->typetag = pTypeTag;
-
-  float *addDataPointer = pData + 4 + adrLen + newTtagLen;
-  *addDataPointer = data;
-  
+  // Stare data
+  char *pRestData = pData + sizeof(int) + msgAdrLen + newTtagLen;
+  memcpy(pRestData, restData, restDataLen);
+  // Nove data
+  float *pNewData = pData + sizeof(int) + msgAdrLen + newTtagLen + restDataLen;
+  *pNewData = data;
+  // Prve 4B (aktualizovana dlzka)
   int *pRawData = pData;
-  *pRawData = (newTtagLen + adrLen + sizeof(data));
+  *pRawData = newMsgLen;
   msg->raw_data = pRawData;
-
-  // Tu sa vykonava free.
+  // Adresa
+  char *pAddress = pData + sizeof(int);
+  memcpy(pAddress, msg->address, msgAdrLen);
+  msg->address = pAddress;
+  // TypeTag
+  char *pTypetag = pData + sizeof(int) + msgAdrLen;
+  memcpy(pTypetag, newTypeTag, newTtagLen);
+  msg->typetag = pTypetag;
+  // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag
   free(newTypeTag);
-
   return 0;
 }
 
 int osc_message_add_timetag(struct osc_message *msg, struct osc_timetag tag) {
-  size_t adrLen = getLength(msg->address);
-  // TOTO FREE
+  // Velkost adresy v msg
+  size_t msgAdrLen = getLength(msg->address);
+  // Velkost tt v msg
+  size_t msgTtLen = getLength(msg->typetag);
+  // pointer pre pripad zlyhania reallocu
   void *oldPtr = msg->raw_data;
+  // pointer na data ktore sa nachadzaju za typetagom
+  char *restData = msg->raw_data + msgAdrLen + msgTtLen + sizeof(int);
+  // Velkost zvysnych dat
+  int restDataLen = *(int*)msg->raw_data - msgAdrLen - msgTtLen; 
+  // Toto sa bude muset uvolnit
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_TIMETAG);
 
   if (!newTypeTag) {
     msg->raw_data = oldPtr;
     return 1;
   }
+
+  // velkost noveho typetagu
   size_t newTtagLen = getLength(newTypeTag);
-  void *pData = realloc(msg->raw_data, (newTtagLen + adrLen + sizeof(int) + sizeof(struct osc_timetag)));
+  // Nova dlzka ulozena na prvych 4B
+  int newMsgLen = msgAdrLen + newTtagLen + restDataLen + sizeof(struct osc_timetag);
+  // prve 4B + dlzka adresy + dlzka typetagu(noveho) + dlzka starych dat + dlzka noveho data ,kt. sa prida
+  void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
     msg->raw_data = oldPtr;
     return 1;
   }
-
-  char *pAddress = pData + 4;
-  msg->address = pAddress;
-
-  char *pTypeTag = pData + 4 + adrLen;
-  memcpy(pTypeTag, newTypeTag, newTtagLen);
-  msg->typetag = pTypeTag;
-  //mozno picovina
-  struct osc_timetag *addTagPointer = pData + 4 + adrLen + newTtagLen;
-  *addTagPointer = tag;
-  
+  // Stare data
+  char *pRestData = pData + sizeof(int) + msgAdrLen + newTtagLen;
+  memcpy(pRestData, restData, restDataLen);
+  // Nove data
+  struct osc_timetag *pNewData = pData + sizeof(int) + msgAdrLen + newTtagLen + restDataLen;
+  *pNewData = data;
+  // Prve 4B (aktualizovana dlzka)
   int *pRawData = pData;
-  *pRawData = (newTtagLen + adrLen + sizeof(tag));
+  *pRawData = newMsgLen;
   msg->raw_data = pRawData;
-
-  // Tu sa vykonava free.
+  // Adresa
+  char *pAddress = pData + sizeof(int);
+  memcpy(pAddress, msg->address, msgAdrLen);
+  msg->address = pAddress;
+  // TypeTag
+  char *pTypetag = pData + sizeof(int) + msgAdrLen;
+  memcpy(pTypetag, newTypeTag, newTtagLen);
+  msg->typetag = pTypetag;
+  // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag
   free(newTypeTag);
-
   return 0;
 }
 
 int osc_message_add_string(struct osc_message *msg, const char *data) {
-  size_t adrLen = getLength(msg->address);
-  // TOTO FREE
+  // Velkost adresy v msg
+  size_t msgAdrLen = getLength(msg->address);
+  // Velkost tt v msg
+  size_t msgTtLen = getLength(msg->typetag);
+  // pointer pre pripad zlyhania reallocu
   void *oldPtr = msg->raw_data;
+  // pointer na data ktore sa nachadzaju za typetagom
+  char *restData = msg->raw_data + msgAdrLen + msgTtLen + sizeof(int);
+  // Velkost zvysnych dat
+  int restDataLen = *(int*)msg->raw_data - msgAdrLen - msgTtLen; 
+  // Toto sa bude muset uvolnit
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_STRING);
 
   if (!newTypeTag) {
     msg->raw_data = oldPtr;
     return 1;
   }
+
+  // velkost noveho typetagu
   size_t newTtagLen = getLength(newTypeTag);
-  // +1 for ending zero
-  void *pData = realloc(msg->raw_data, (newTtagLen + adrLen + sizeof(int) + (strlen(data) + 1)*sizeof(char)));
+  // Nova dlzka ulozena na prvych 4B
+  int newMsgLen = msgAdrLen + newTtagLen + restDataLen + strlen(data) + 1;
+  // prve 4B + dlzka adresy + dlzka typetagu(noveho) + dlzka starych dat + dlzka noveho data ,kt. sa prida
+  void *pData = realloc(msg->raw_data, (sizeof(int) + newMsgLen));
 
   if (!pData) {
     msg->raw_data = oldPtr;
     return 1;
   }
-
-  char *pAddress = pData + 4;
-  msg->address = pAddress;
-
-  char *pTypeTag = pData + 4 + adrLen;
-  memcpy(pTypeTag, newTypeTag, newTtagLen);
-  msg->typetag = pTypeTag;
-  //mozno picovina
-  char *addDataPointer = pData + 4 + adrLen + newTtagLen;
-  memcpy(addDataPointer, data, strlen(data) + 1);
-  
+  // Stare data
+  char *pRestData = pData + sizeof(int) + msgAdrLen + newTtagLen;
+  memcpy(pRestData, restData, restDataLen);
+  // Nove data
+  char *pNewData = pData + sizeof(int) + msgAdrLen + newTtagLen + restDataLen;
+  *pNewData = data;
+  // Prve 4B (aktualizovana dlzka)
   int *pRawData = pData;
-  *pRawData = (newTtagLen + adrLen + strlen(data) + 1);
+  *pRawData = newMsgLen;
   msg->raw_data = pRawData;
-
-  // Tu sa vykonava free.
+  // Adresa
+  char *pAddress = pData + sizeof(int);
+  memcpy(pAddress, msg->address, msgAdrLen);
+  msg->address = pAddress;
+  // TypeTag
+  char *pTypetag = pData + sizeof(int) + msgAdrLen;
+  memcpy(pTypetag, newTypeTag, newTtagLen);
+  msg->typetag = pTypetag;
+  // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag
   free(newTypeTag);
-
   return 0;
 }
 
