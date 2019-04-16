@@ -24,12 +24,23 @@ struct osc_message {
   void *raw_data;
 };
 
+struct osc_bundle {
+  struct osc_timetag *timetag;
+  void *raw_data;
+};
+
+
 union osc_msg_argument {
   const char *s;
   const int32_t i;
   const float f;
   const struct osc_timetag t;
 };
+
+void OSC_BUNDLE_NULL(struct osc_bundle *bundle) {
+  bundle->timetag = NULL;
+  bundle->raw_data = NULL;
+}
 
 void OSC_TIMETAG_IMMEDIATE(struct osc_timetag *timetag) {
   timetag->sec = 0;
@@ -67,6 +78,28 @@ int osc_message_new(struct osc_message *msg) {
   msg->typetag = pTyptag;
 
   return 0;
+}
+
+int osc_bundle_new(struct osc_bundle *bnd) {
+  void *pData = calloc(20, 1);
+
+  if (!pData) {
+    return 1;
+  }
+
+  int *pLength = pData;
+  *pLength = 16;
+
+  char *pText = (char*)pData + sizeof(int);
+  char *bundleText = "#bundle";
+  memcpy(pText, bundleText, strlen(bundleText) + 1);
+
+  struct osc_timetag *pTimeTag = (struct osc_timetag*)(pText + 8*sizeof(char));
+  OSC_TIMETAG_IMMEDIATE(pTimeTag);
+
+  return 0;
+  
+
 }
 
 void osc_message_destroy(struct osc_message *msg) {
@@ -369,6 +402,7 @@ const union osc_msg_argument *osc_message_arg(const struct osc_message *msg, siz
   if (typeTagLen - 1 <= arg_index) {
     return NULL;
   }
+
   int index = 0;
   void *tmpRawData = (char*)msg->raw_data + sizeof(int) + getLength(msg->typetag) + getLength(msg->address);
   do {
@@ -380,7 +414,8 @@ const union osc_msg_argument *osc_message_arg(const struct osc_message *msg, siz
   }while(index - 1 != arg_index);
 
   //TODO pretypovat na union
-  return tmpRawData;
+  // treva naokolovat union
+  return (union osc_msg_argument*)tmpRawData;
 }
 
 
