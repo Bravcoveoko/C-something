@@ -97,14 +97,28 @@ int osc_bundle_new(struct osc_bundle *bnd) {
   struct osc_timetag *pTimeTag = (struct osc_timetag*)(pText + 8*sizeof(char));
   OSC_TIMETAG_IMMEDIATE(pTimeTag);
 
-  return 0;
-  
+  bnd->timetag = pTimeTag;
+  bnd->raw_data = pData;
 
+  return 0;
+}
+
+void osc_bundle_destroy(struct osc_bundle *bn) {
+  free(bn->raw_data);
+  OSC_BUNDLE_NULL(bn);
 }
 
 void osc_message_destroy(struct osc_message *msg) {
   free(msg->raw_data);
   OSC_MESSAGE_NULL(msg);
+}
+
+void osc_bundle_set_timetag(struct osc_bundle *bn, struct osc_timetag tag) {
+  memcpy(bn->timetag, &tag, sizeof(struct osc_timetag));
+}
+
+int osc_bundle_add_message(struct osc_bundle *bundle, const struct osc_message *msg) {
+
 }
 
 size_t getLength(const char *address) {
