@@ -460,6 +460,7 @@ struct osc_message osc_bundle_next_message(const struct osc_bundle *bundle, stru
 
 size_t osc_bundle_serialized_length(const struct osc_bundle *bundle) {
   // TROLO
+  // TOLO2
   return *((int *)(bundle->raw_data));
 }
 
