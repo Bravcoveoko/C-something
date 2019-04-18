@@ -455,16 +455,20 @@ int osc_bundle_add_message(struct osc_bundle *bundle, const struct osc_message *
 }
 
 struct osc_message osc_bundle_next_message(const struct osc_bundle *bundle, struct osc_message prev) {
+  // Ignorovat prve 4B, #bundle string, timetag
+  size_t ignoringBytes = sizeof(uint32_t) + (8 * sizeof(char)) + sizeof(struct osc_timetag);
+  char *currentMsg = (char *)(bundle->raw_data) + ignoringBytes;
+  // Dlzka danej spravy
+  int currentMsgLen = *((int *)(currentMsg));
+  // Hodnota od ktorej sa bude odcitavat
+  size_t bundleLength = *((int *)(bundle->raw_data)) + sizeof(uint32_t) - ignoringBytes;
+
+  struct osc_message result;
+  struct osc_message *oscMsg;
+
   
-
-
 }
 
 size_t osc_bundle_serialized_length(const struct osc_bundle *bundle) {
   return *((int *)(bundle->raw_data));
-}
-
-
-int main(void) {
-  return 0;
 }
