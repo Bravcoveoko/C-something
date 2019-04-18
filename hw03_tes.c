@@ -457,15 +457,64 @@ int osc_bundle_add_message(struct osc_bundle *bundle, const struct osc_message *
 struct osc_message osc_bundle_next_message(const struct osc_bundle *bundle, struct osc_message prev) {
   // Ignorovat prve 4B, #bundle string, timetag
   size_t ignoringBytes = sizeof(uint32_t) + (8 * sizeof(char)) + sizeof(struct osc_timetag);
+  // Konkretna sprava
   char *currentMsg = (char *)(bundle->raw_data) + ignoringBytes;
-  // Dlzka danej spravy
-  int currentMsgLen = *((int *)(currentMsg));
+  // Dlzka danej spravy + 4B
+  size_t currentMsgLen = *((int *)(currentMsg)) + sizeof(int32_t);
+  if (prev.raw_data == NULL) {
+    void *pData = calloc(currentMsgLen, sizeof(char));
+    if (!pData) {
+      struct osc_message result = {NULL, NULL, NULL};
+      return result;
+    }
+    memcpy(pData, currentMsg, currentMsgLen);
+
+    struct osc_message result;
+    result.raw_data = pData;
+    result.address = ((char *)(pData)) + sizeof(uint32_t);
+    result.typetag = ((char *)(pData)) + sizeof(uint32_t) + getLength(result.address);
+
+    return result;
+  }
   // Hodnota od ktorej sa bude odcitavat
   size_t bundleLength = *((int *)(bundle->raw_data)) + sizeof(uint32_t) - ignoringBytes;
-
-  struct osc_message result;
+  if (bundleLength == 0) {
+    struct osc_message result = {NULL, NULL, NULL};
+    return result;
+  }
+  // Tento pointer mozno ani nebudem potrebovat
   struct osc_message *oscMsg;
 
+  while(memcmp((struct osc_message *)currentMsg, &prev, currentMsgLen) != 0) {
+    bundleLength -= currentMsgLen;
+    if (bundleLength == 0) {
+      struct osc_message result = {NULL, NULL, NULL};
+      return result;
+    }
+
+    currentMsg = ((char *)(currentMsg)) + currentMsgLen;
+    currentMsgLen = *((int *)currentMsg) + sizeof(uint32_t);
+
+  }
+  // Ide o posledny ? 
+  if (bundleLength - currentMsgLen == 0) {
+    struct osc_message result = {NULL, NULL, NULL};
+    return result;
+  }
+  currentMsg = ((char *)(currentMsg)) + currentMsgLen;
+  int newMsgLen = *((int *)(currentMsg)) + sizeof(uint32_t);
+  void *pData = calloc(newMsgLen, sizeof(char));
+  if (!pData) {
+      struct osc_message result = {NULL, NULL, NULL};
+      return result;
+    }
+  memcpy(pData, currentMsg, newMsgLen);
+  struct osc_message result;
+  result.raw_data = pData;
+  result.address = ((char *)(pData)) + sizeof(uint32_t);
+  result.typetag = ((char *)(pData)) + sizeof(uint32_t) + getLength(result.address);
+
+  return result;
   
 }
 
