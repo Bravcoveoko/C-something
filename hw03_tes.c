@@ -365,7 +365,7 @@ const union osc_msg_argument *osc_message_arg(const struct osc_message *msg, siz
     ++index;
   }while(index - 1 != arg_index);
 
-  return (union osc_msg_argument *)tmpRawData;
+  return (const union osc_msg_argument *)tmpRawData;
 }
 
 size_t osc_message_serialized_length(const struct osc_message *msg) {
