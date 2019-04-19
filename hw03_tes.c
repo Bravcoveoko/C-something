@@ -39,6 +39,18 @@ void osc_message_destroy(struct osc_message *msg) {
   OSC_MESSAGE_NULL(msg);
 }
 
+/* VYMAZ POTOM */
+void printAllBytes(size_t num, char *data) {
+    for (size_t i = 0; i < num; ++i) {
+        if (*(data + i) == '\0') {
+            printf("\\0");
+        } else {
+            printf("%c", *(data + i));
+        }    
+    }
+    printf("\n");
+}
+
 int osc_message_new(struct osc_message *msg) {
   void *pData = calloc(12, 1);
 
@@ -146,13 +158,13 @@ int osc_message_add_int32(struct osc_message *msg, int32_t data) {
   // Nova dlzka ulozena na prvych 4B
   int newMsgLen = msgAdrLen + newTtagLen + restDataLen + sizeof(int32_t);
   // prve 4B + dlzka adresy + dlzka typetagu(noveho) + dlzka starych dat + dlzka noveho data ,kt. sa prida
-  void *pData = realloc(msg->raw_data, (sizeof(uint32_t) + newMsgLen));
+  void *pData = realloc(msg->raw_data, (sizeof(int32_t) + newMsgLen));
 
   if (!pData) {
     return 1;
   }
   // Stare data
-  char *pRestData = (char *)pData + sizeof(uint32_t) + msgAdrLen + newTtagLen;
+  char *pRestData = (char *)pData + sizeof(int32_t) + msgAdrLen + newTtagLen;
   memcpy(pRestData, restData, restDataLen);
   // Nove data
   int32_t *pNewData = (int32_t*)((char*)pData + sizeof(uint32_t) + msgAdrLen + newTtagLen + restDataLen);
@@ -211,11 +223,11 @@ int osc_message_add_float(struct osc_message *msg, float data) {
   *pRawData = newMsgLen;
   msg->raw_data = pRawData;
   // Adresa
-  char *pAddress = (char*)pData + sizeof(uint32_t);
+  char *pAddress = (char *)pData + sizeof(uint32_t);
   memcpy(pAddress, msg->address, msgAdrLen);
   msg->address = pAddress;
   // TypeTag
-  char *pTypetag = (char*)pData + sizeof(uint32_t) + msgAdrLen;
+  char *pTypetag = (char *)pData + sizeof(uint32_t) + msgAdrLen;
   memcpy(pTypetag, newTypeTag, newTtagLen);
   msg->typetag = pTypetag;
   // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag
@@ -279,11 +291,12 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   // Velkost tt v msg
   size_t msgTtLen = getLength(msg->typetag);
   // pointer na data ktore sa nachadzaju za typetagom
-  char *restData = (char *)msg->raw_data + msgAdrLen + msgTtLen + sizeof(uint32_t);
+  char *restData = (char *)msg->raw_data + msgAdrLen + msgTtLen + sizeof(int32_t);
   // Velkost zvysnych dat
   int restDataLen = *(int*)msg->raw_data - msgAdrLen - msgTtLen; 
   // Toto sa bude muset uvolnit
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_STRING);
+  printf("Novy typetag: %s a velkost je: %lu\n", newTypeTag, getLength(newTypeTag));
 
   if (!newTypeTag) {
     return 1;
@@ -292,33 +305,47 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   // velkost noveho typetagu
   size_t newTtagLen = getLength(newTypeTag);
   // Nova dlzka ulozena na prvych 4B
-  int newMsgLen = msgAdrLen + newTtagLen + restDataLen + strlen(data) + 1;
+  int newMsgLen = msgAdrLen + newTtagLen + restDataLen + getLength(data);
   // prve 4B + dlzka adresy + dlzka typetagu(noveho) + dlzka starych dat + dlzka noveho data ,kt. sa prida
-  void *pData = realloc(msg->raw_data, (sizeof(uint32_t) + newMsgLen));
+  void *pData = realloc(msg->raw_data, (sizeof(int32_t) + newMsgLen));
 
   if (!pData) {
     return 1;
   }
 
-  // Stare data
-  char *pRestData = (char*)pData + sizeof(uint32_t) + msgAdrLen + newTtagLen;
+  char *pTypeTag = ((char *)pData) + sizeof(int32_t) + msgAdrLen;
+  memcpy(pTypeTag, newTypeTag, newTtagLen);
+
+  char *pRestData = ((char *)pData) + sizeof(int32_t) + msgAdrLen + newTtagLen;
+  memcpy(pRestData, restData, restDataLen);
+
+  char *pNewData = ((char *)pData) + sizeof(int32_t) + msgAdrLen + newTtagLen + restDataLen;
+  memcpy(pNewData, data, getLength(data));
+
+  *((int *)(pData)) = newMsgLen;
+  msg->raw_data = pData;
+  msg->address = ((char *)pData) + sizeof(int32_t);
+  msg->typetag = ((char *)pData) + sizeof(int32_t) + msgAdrLen;
+
+  /*// Stare data
+  char *pRestData = (char*)pData + sizeof(int32_t) + msgAdrLen + newTtagLen;
   memcpy(pRestData, restData, restDataLen);
   // Nove data
-  char *pNewData = (char*)pData + sizeof(uint32_t) + msgAdrLen + newTtagLen + restDataLen;
-  memcpy(pNewData, data, strlen(data) + 1);
+  char *pNewData = (char*)pData + sizeof(int32_t) + msgAdrLen + newTtagLen + restDataLen;
+  memcpy(pNewData, data, getLength(data));
   // Prve 4B (aktualizovana dlzka)
   int *pRawData = pData;
   *pRawData = newMsgLen;
   msg->raw_data = pRawData;
   // Adresa
-  char *pAddress = (char*)pData + sizeof(uint32_t);
+  char *pAddress = (char*)pData + sizeof(int32_t);
   memcpy(pAddress, msg->address, msgAdrLen);
   msg->address = pAddress;
   // TypeTag
   char *pTypetag = (char*)pData + sizeof(uint32_t) + msgAdrLen;
   memcpy(pTypetag, newTypeTag, newTtagLen);
   msg->typetag = pTypetag;
-  // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag
+  // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag*/
   free(newTypeTag);
   return 0;
 }
@@ -327,21 +354,22 @@ size_t osc_message_argc(const struct osc_message *msg) {
   return strlen(msg->typetag) - 1;
 }
 
-void *getArgument(char letter, void *tmpRD) {
+void *getArgument(char letter, void *tmpRD, size_t index) {
   size_t length = 0;
   switch(letter) {
     case OSC_TT_INT:
-      tmpRD = (int*)tmpRD + 1;
+      tmpRD = (int*)tmpRD + index;
       return tmpRD;
     case OSC_TT_FLOAT:
-      tmpRD = (float*)tmpRD + 1;
+      tmpRD = (float*)tmpRD + index;
       return tmpRD;
     case OSC_TT_TIMETAG:
-      tmpRD = (struct osc_timetag*)tmpRD + 1;
+      tmpRD = (struct osc_timetag*)tmpRD + index;
       return tmpRD;
     case OSC_TT_STRING:
-      length = strlen((char*)tmpRD) + 1;
-      tmpRD = (char*)tmpRD + length;
+      length = getLength((char*)tmpRD);
+      //printAllBytes(length, (char*)tmpRD);
+      tmpRD = (char *)tmpRD + length;
       return tmpRD;
     default:
       tmpRD = NULL;
@@ -356,16 +384,16 @@ const union osc_msg_argument *osc_message_arg(const struct osc_message *msg, siz
   }
 
   size_t index = 0;
-  void *tmpRawData = (char*)msg->raw_data + sizeof(uint32_t) + getLength(msg->typetag) + getLength(msg->address);
-  do {
-    tmpRawData = getArgument(*(msg->typetag + 1 + index), tmpRawData);
-    if (!tmpRawData) {
-      return NULL;
-    }
+  void *tmpRawData = ((char*)msg->raw_data) + sizeof(int32_t) + getLength(msg->typetag) + getLength(msg->address);
+  while (index != arg_index) {
     ++index;
-  }while(index - 1 != arg_index);
+    tmpRawData = getArgument(*(msg->typetag + 1 + index), tmpRawData, index);
+    if (!tmpRawData) {
+        return NULL;
+    }
+  }
 
-  return (const union osc_msg_argument *)tmpRawData;
+  return (union osc_msg_argument *)tmpRawData;
 }
 
 size_t osc_message_serialized_length(const struct osc_message *msg) {
@@ -489,3 +517,4 @@ struct osc_message osc_bundle_next_message(const struct osc_bundle *bundle, stru
 size_t osc_bundle_serialized_length(const struct osc_bundle *bundle) {
   return *((int *)(bundle->raw_data));
 }
+

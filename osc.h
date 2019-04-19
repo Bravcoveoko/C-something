@@ -14,8 +14,8 @@
 #define OSC_TYPETAG(...) {',', __VA_ARGS__, '\0'}
 
 struct osc_timetag {
-  int32_t sec;
-  int32_t frac;
+  uint32_t sec;
+  uint32_t frac;
 };
 
 struct osc_message {
@@ -29,12 +29,11 @@ struct osc_bundle {
   void *raw_data;
 };
 
-
 union osc_msg_argument {
-  const char *s;
-  const int32_t i;
-  const float f;
-  const struct osc_timetag *t;
+  char const s;
+  int32_t const i;
+  float const f;
+  struct osc_timetag const t;
 };
 
 void OSC_BUNDLE_NULL(struct osc_bundle *bundle);
@@ -71,7 +70,10 @@ void osc_bundle_destroy(struct osc_bundle *bn);
 
 void osc_bundle_set_timetag(struct osc_bundle *bn, struct osc_timetag tag);
 
+int osc_bundle_add_message(struct osc_bundle *bundle, const struct osc_message *msg);
+
 struct osc_message osc_bundle_next_message(const struct osc_bundle *bundle, struct osc_message prev);
 
 size_t osc_bundle_serialized_length(const struct osc_bundle *bundle);
 #endif // PB071_OSC_H
+
