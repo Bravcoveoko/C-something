@@ -230,10 +230,8 @@ int osc_message_add_timetag(struct osc_message *msg, struct osc_timetag tag) {
   size_t msgAdrLen = getLength(msg->address);
   // Velkost tt v msg
   size_t msgTtLen = getLength(msg->typetag);
-  // pointer na data ktore sa nachadzaju za typetagom
-  char *restData = (char *)msg->raw_data + msgAdrLen + msgTtLen + sizeof(int);
   // Velkost zvysnych dat
-  int restDataLen = *(int*)msg->raw_data - msgAdrLen - msgTtLen; 
+  int restDataLen = *((int*)(msg->raw_data)) - msgAdrLen - msgTtLen; 
   // Toto sa bude muset uvolnit
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_TIMETAG);
 
@@ -246,31 +244,27 @@ int osc_message_add_timetag(struct osc_message *msg, struct osc_timetag tag) {
   // Nova dlzka ulozena na prvych 4B
   int newMsgLen = msgAdrLen + newTtagLen + restDataLen + sizeof(struct osc_timetag);
   // prve 4B + dlzka adresy + dlzka typetagu(noveho) + dlzka starych dat + dlzka noveho data ,kt. sa prida
-  void *pData = realloc(msg->raw_data, (sizeof(uint32_t) + newMsgLen));
+  void *pData = realloc(msg->raw_data, (sizeof(int32_t) + newMsgLen));
 
   if (!pData) {
     return 1;
   }
 
-  // Stare data
-  char *pRestData = (char*)pData + sizeof(uint32_t) + msgAdrLen + newTtagLen;
-  memcpy(pRestData, restData, restDataLen);
-  // Nove data
-  struct osc_timetag *pNewData = (struct osc_timetag*)((char*)pData + sizeof(uint32_t) + msgAdrLen + newTtagLen + restDataLen);
-  *pNewData = tag;
-  // Prve 4B (aktualizovana dlzka)
-  int *pRawData = pData;
-  *pRawData = newMsgLen;
-  msg->raw_data = pRawData;
-  // Adresa
-  char *pAddress = (char*)pData + sizeof(uint32_t);
-  memcpy(pAddress, msg->address, msgAdrLen);
-  msg->address = pAddress;
-  // TypeTag
-  char *pTypetag = (char*)pData + sizeof(uint32_t) + msgAdrLen;
-  memcpy(pTypetag, newTypeTag, newTtagLen);
-  msg->typetag = pTypetag;
-  // Uvolnit pamat ktora vznikla vo funkcii addNewTypeTag
+  char *pRestData = ((char *)pData) + sizeof(uint32_t) + msgAdrLen + msgTtLen;
+  char *newRestDataPos = ((char *)pData) + sizeof(uint32_t) + msgAdrLen + newTtagLen;
+  memmove(newRestDataPos, pRestData, restDataLen);
+
+  char *pTypetag = ((char *)pData) + sizeof(uint32_t) + msgAdrLen;
+  memmove(pTypetag, newTypeTag, newTtagLen);
+
+  char *pNewData = ((char *)pData) + sizeof(uint32_t) + msgAdrLen + newTtagLen + restDataLen;
+  *((struct osc_timetag *)pNewData) = tag;
+
+  *((int32_t *)(pData)) = newMsgLen;
+  msg->raw_data = pData;
+  msg->address = ((char *)pData) + sizeof(int32_t);
+  msg->typetag = ((char *)pData) + sizeof(int32_t) + msgAdrLen;
+
   free(newTypeTag);
   return 0;
 }
@@ -280,10 +274,8 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
   size_t msgAdrLen = getLength(msg->address);
   // Velkost tt v msg
   size_t msgTtLen = getLength(msg->typetag);
-  // pointer na data ktore sa nachadzaju za typetagom
-  char *restData = (char *)msg->raw_data + msgAdrLen + msgTtLen + sizeof(int32_t);
   // Velkost zvysnych dat
-  int restDataLen = *(int*)msg->raw_data - msgAdrLen - msgTtLen; 
+  int restDataLen = *((int*)(msg->raw_data)) - msgAdrLen - msgTtLen; 
   // Toto sa bude muset uvolnit
   char *newTypeTag = addNewTypeTag(msg->typetag, OSC_TT_STRING);
 
@@ -302,19 +294,22 @@ int osc_message_add_string(struct osc_message *msg, const char *data) {
     return 1;
   }
 
-  char *pTypeTag = ((char *)pData) + sizeof(int32_t) + msgAdrLen;
-  memcpy(pTypeTag, newTypeTag, newTtagLen);
+  char *pRestData = ((char *)pData) + sizeof(uint32_t) + msgAdrLen + msgTtLen;
+  char *newRestDataPos = ((char *)pData) + sizeof(uint32_t) + msgAdrLen + newTtagLen;
+  memmove(newRestDataPos, pRestData, restDataLen);
 
-  char *pRestData = ((char *)pData) + sizeof(int32_t) + msgAdrLen + newTtagLen;
-  memcpy(pRestData, restData, restDataLen);
+  char *pTypetag = ((char *)pData) + sizeof(uint32_t) + msgAdrLen;
+  memmove(pTypetag, newTypeTag, newTtagLen);
 
-  char *pNewData = ((char *)pData) + sizeof(int32_t) + msgAdrLen + newTtagLen + restDataLen;
-  memcpy(pNewData, data, getLength(data));
+  char *pNewData = ((char *)pData) + sizeof(uint32_t) + msgAdrLen + newTtagLen + restDataLen;
+  memmove(pNewData, data, strlen(data) + 1);
+  
 
-  *((int *)(pData)) = newMsgLen;
+  *((int32_t *)(pData)) = newMsgLen;
   msg->raw_data = pData;
   msg->address = ((char *)pData) + sizeof(int32_t);
   msg->typetag = ((char *)pData) + sizeof(int32_t) + msgAdrLen;
+
   free(newTypeTag);
   return 0;
 }
@@ -323,20 +318,20 @@ size_t osc_message_argc(const struct osc_message *msg) {
   return strlen(msg->typetag) - 1;
 }
 
-void *getArgument(char letter, void *tmpRD, size_t index) {
+void *getArgument(char letter, void *tmpRD) {
   size_t length = 0;
   switch(letter) {
     case OSC_TT_INT:
-      tmpRD = (int*)tmpRD + index;
+      tmpRD = (int *)tmpRD + 1;
       return tmpRD;
     case OSC_TT_FLOAT:
-      tmpRD = (float*)tmpRD + index;
+      tmpRD = (float *)tmpRD + 1;
       return tmpRD;
     case OSC_TT_TIMETAG:
-      tmpRD = (struct osc_timetag*)tmpRD + index;
+      tmpRD = ((struct osc_timetag *)(tmpRD)) + 1;
       return tmpRD;
     case OSC_TT_STRING:
-      length = getLength((char*)tmpRD);
+      length = getLength((char *)tmpRD);
       tmpRD = (char *)tmpRD + length;
       return tmpRD;
     default:
@@ -355,7 +350,7 @@ const union osc_msg_argument *osc_message_arg(const struct osc_message *msg, siz
   void *tmpRawData = ((char*)msg->typetag) + getLength(msg->typetag);
 
   for (index = 0; index < arg_index; ++index) {
-    tmpRawData = getArgument(*(msg->typetag + 1 + index), tmpRawData, index);
+    tmpRawData = getArgument(*(msg->typetag + 1 + index), tmpRawData);
     if (!tmpRawData) {
         return NULL;
     }
@@ -373,19 +368,20 @@ int osc_bundle_new(struct osc_bundle *bnd) {
   if (!pData) {
     return 1;
   }
-  bnd->raw_data = pData;
 
-  int *pLength = pData;
-  *pLength = 16;
+  *((int32_t *)pData) = sizeof(struct osc_timetag) + (8 * sizeof(char));
 
   char *pText = (char*)pData + sizeof(uint32_t);
   char *bundleText = "#bundle";
-  memcpy(pText, bundleText, strlen(bundleText) + 1);
+  memmove((char *)pText + 4, bundleText, 7 * sizeof(char));
 
-  struct osc_timetag *pTimeTag = (struct osc_timetag *)(pText + (8 * sizeof(char)));
-  OSC_TIMETAG_IMMEDIATE(pTimeTag);
+  struct osc_timetag *pTimeTag = (struct osc_timetag *)((char *)pText + (8 * sizeof(char)));
+  struct osc_timetag timetag;
+  OSC_TIMETAG_IMMEDIATE(&timetag);
+  memmove(pTimeTag, &timetag, sizeof(struct osc_timetag));
 
-  bnd->timetag = pTimeTag;
+  bnd->raw_data = pData;
+  bnd->timetag = (struct osc_timetag *)(((char *)pData) + 8 * sizeof(char));
 
   return 0;
 }
