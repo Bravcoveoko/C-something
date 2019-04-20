@@ -373,7 +373,7 @@ int osc_bundle_new(struct osc_bundle *bnd) {
 
   char *pText = (char*)pData + sizeof(uint32_t);
   char *bundleText = "#bundle";
-  memmove((char *)pText + 4, bundleText, 7 * sizeof(char));
+  memmove((char *)pText, bundleText, 7 * sizeof(char));
 
   struct osc_timetag *pTimeTag = (struct osc_timetag *)((char *)pText + (8 * sizeof(char)));
   struct osc_timetag timetag;
@@ -392,7 +392,7 @@ void osc_bundle_destroy(struct osc_bundle *bn) {
 }
 
 void osc_bundle_set_timetag(struct osc_bundle *bn, struct osc_timetag tag) {
-  memcpy(bn->timetag, &tag, sizeof(struct osc_timetag));
+  memmove(bn->timetag, &tag, sizeof(struct osc_timetag));
 }
 
 int osc_bundle_add_message(struct osc_bundle *bundle, const struct osc_message *msg) {
@@ -405,12 +405,13 @@ int osc_bundle_add_message(struct osc_bundle *bundle, const struct osc_message *
     return 1;
   }
 
+  *((int32_t *)(pData)) = bundleLenght + msgLength;
+
+  void *pNewMessage = (void *)((char *)pData + bundleLenght + sizeof(uint32_t));
+  memmove(pNewMessage, msg->raw_data, msgLength);
+
   bundle->raw_data = pData;
-
-  *((int *)(bundle->raw_data)) = bundleLenght + msgLength;
-
-  struct osc_message *pMsg = (struct osc_message *)((char*)pData + sizeof(uint32_t) + bundleLenght);
-  memcpy(pMsg, msg, msgLength);
+  bundle->timetag = (struct osc_timetag *)((char *)pData + (12 * sizeof(char)));
 
   return 0;
 }
